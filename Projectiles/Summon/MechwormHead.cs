@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using CalamityMod.Buffs.DamageOverTime;
@@ -9,6 +9,7 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Terraria;
 using Terraria.Audio;
+using Terraria.DataStructures;
 using Terraria.ID;
 using Terraria.ModLoader;
 
@@ -17,6 +18,7 @@ namespace CalamityMod.Projectiles.Summon
     public class MechwormHead : ModProjectile, ILocalizedModType
     {
         public new string LocalizationCategory => "Projectiles.Summon";
+
         internal enum AttackState : byte
         {
             PortalGateCharge,
@@ -28,19 +30,20 @@ namespace CalamityMod.Projectiles.Summon
         internal Vector2 TeleportEndingPoint;
         internal AttackState CurrentAttackState = AttackState.LaserCharge;
 
-        internal const int MaxSegmentsToCountForScaling = 50;
         internal const int AttackStateShiftTime = 320;
         internal const int StartupLethargy = 150;
         internal const int LaserChargeFrames = 45;
         internal const int LaserRedirectFrames = 30;
         internal const float MaxAttackFlySpeed = 33f;
 
+        Dictionary<int, Projectile> segments = new Dictionary<int, Projectile>();
+
         internal ref float Time => ref Projectile.ai[1];
         internal ref float TotalWormSegments => ref Projectile.localAI[0];
 
         // Helper functions because Mechworm does a lot of checking for either itself or its target being near the edge of the world.
-        private static Vector2 WorldTopLeft(int tileDist = 15) => new Vector2(tileDist * 16f);
-        private static Vector2 WorldBottomRight(int tileDist = 15) => new Vector2(Main.maxTilesX - tileDist, Main.maxTilesY - tileDist) * 16f;
+        public static Vector2 WorldTopLeft(int tileDist = 15) => new Vector2(tileDist * 16f);
+        public static Vector2 WorldBottomRight(int tileDist = 15) => new Vector2(Main.maxTilesX - tileDist, Main.maxTilesY - tileDist) * 16f;
 
         public override void SetStaticDefaults()
         {
@@ -98,6 +101,11 @@ namespace CalamityMod.Projectiles.Summon
         #endregion
 
         #region AI
+
+        public override void OnSpawn(IEntitySource source)
+        {
+            Main.player[Projectile.owner].Calamity().mWorm = true; //needed because the buff doesn't set this value before the projectile's first update; so if this is removed it'll immediately despawn.
+        }
         public override void AI()
         {
             // If the mechworm is opaque enough, produce light.
@@ -126,7 +134,13 @@ namespace CalamityMod.Projectiles.Summon
             if (owner.dead)
                 modPlayer.mWorm = false;
             if (modPlayer.mWorm)
+            {
                 Projectile.timeLeft = 2;
+            } else
+            {
+                Projectile.Kill();
+                return;
+            }
 
             Time++;
 
@@ -197,6 +211,41 @@ namespace CalamityMod.Projectiles.Summon
                 Projectile.netUpdate = true;
                 if (Projectile.netSpam > 59)
                     Projectile.netSpam = 59;
+            }
+            Projectile.position += Projectile.velocity; // used to compensate for disabling the default position updating, as we need the position to update before we end the AI.
+            Projectile.rotation = Projectile.velocity.ToRotation();
+
+            //Scan for active segments from te same player and add them to the segment list based on their index
+
+            segments.Clear();
+
+            foreach (var projectile in Main.projectile)
+            {
+                if (projectile.type == ModContent.ProjectileType<MechwormBody>() && projectile.owner == Projectile.owner && projectile.active && !segments.ContainsKey(projectile.ModProjectile<MechwormBody>().segmentIndex))
+                {
+                    segments.Add(projectile.ModProjectile<MechwormBody>().segmentIndex, projectile);
+                }
+                if (projectile.type == ModContent.ProjectileType<MechwormTail>() && projectile.owner == Projectile.owner && projectile.active)
+                {
+                    segments.Add(projectile.ModProjectile<MechwormTail>().segmentIndex, projectile);
+
+                }
+            }
+           
+
+            //Call the segment's move code. *needs to be at the end of the head's AI to ensure that the next segment can move based on the head's final position.*
+            for (var i = 1; i <= segments.Count; i++)
+            {
+                if (i < segments.Count)
+                {
+                    if (segments.ContainsKey(i))
+                        segments[i].ModProjectile<MechwormBody>().SegmentMove();
+                }
+                else
+                {
+                    if (segments.ContainsKey(i))
+                        segments[i].ModProjectile<MechwormTail>().SegmentMove();
+                }
             }
         }
 
@@ -338,18 +387,12 @@ namespace CalamityMod.Projectiles.Summon
                     Projectile.Center = TeleportStartingPoint;
 
                 // Reset the alpha and position across the entire worm for the next charge.
-                foreach (Projectile otherProj in Main.ActiveProjectiles)
+                foreach (Projectile otherProj in segments.Values)
                 {
-                    if (otherProj.owner != Projectile.owner || otherProj.whoAmI == Projectile.whoAmI)
-                        continue;
-
-                    if (otherProj.type == ModContent.ProjectileType<MechwormBody>() || otherProj.type == ModContent.ProjectileType<MechwormTail>())
-                    {
                         otherProj.alpha = 0;
                         if (AttackStateTimer != 0)
                             otherProj.Center = Projectile.Center;
-                        // There is no need to set the other projectiles to net update. They will do so when the head does.
-                    }
+                    
                 }
 
                 Projectile.alpha = 0;
@@ -396,8 +439,26 @@ namespace CalamityMod.Projectiles.Summon
 
         public override bool PreDraw(ref Color lightColor)
         {
+            //draws the segments in reverse order, so that the tail is on bottom and the head on top
             Texture2D tex = Terraria.GameContent.TextureAssets.Projectile[Projectile.type].Value;
-            Main.EntitySpriteDraw(tex, Projectile.Center - Main.screenPosition, null, Projectile.GetAlpha(lightColor), Projectile.rotation, tex.Size() / 2f, Projectile.scale, SpriteEffects.None, 0);
+            Texture2D texBody = ModContent.Request<Texture2D>("CalamityMod/Projectiles/Summon/MechwormBody").Value;
+            Texture2D texTail = ModContent.Request<Texture2D>("CalamityMod/Projectiles/Summon/MechwormTail").Value;
+            for (var i = segments.Count; i > 0; i--)
+            {
+                if (segments.ContainsKey(i))
+                {
+                    SpriteEffects fx = Math.Abs(segments[i].rotation) > MathHelper.PiOver2 ? SpriteEffects.FlipHorizontally : SpriteEffects.None;
+                    if (i < segments.Count - 1)
+                    {
+                        Main.EntitySpriteDraw(texBody, segments[i].Center - Main.screenPosition, null, segments[i].GetAlpha(lightColor), segments[i].rotation + MathHelper.Pi / 2f, texBody.Size() / (2f), segments[i].scale, fx, 0);
+                    }
+                    else 
+                    {
+                        Main.EntitySpriteDraw(texTail, segments[i].Center - Main.screenPosition, null, segments[i].GetAlpha(lightColor), segments[i].rotation + MathHelper.Pi / 2f, texBody.Size() / 2f, segments[i].scale, fx, 0);
+                    }
+                }
+            }
+            Main.EntitySpriteDraw(tex, Projectile.Center - Main.screenPosition, null, Projectile.GetAlpha(lightColor), Projectile.rotation + MathHelper.Pi / 2f, tex.Size() / 2f, Projectile.scale, Projectile.velocity.X > 0 ? SpriteEffects.None : SpriteEffects.FlipHorizontally, 0);
             return false;
         }
 
@@ -407,7 +468,7 @@ namespace CalamityMod.Projectiles.Summon
                 return;
 
             Vector2 origin = new Vector2(21f, 25f);
-            Main.EntitySpriteDraw(ModContent.Request<Texture2D>("CalamityMod/Projectiles/Summon/MechwormHeadGlow").Value, Projectile.Center - Main.screenPosition, null, Color.White, Projectile.rotation, origin, 1f, SpriteEffects.None, 0);
+            Main.EntitySpriteDraw(ModContent.Request<Texture2D>("CalamityMod/Projectiles/Summon/MechwormHeadGlow").Value, Projectile.Center - Main.screenPosition, null, Color.White, Projectile.rotation + MathHelper.Pi / 2f, origin, 1f, SpriteEffects.None, 0);
         }
 
         public override void DrawBehind(int index, List<int> behindNPCsAndTiles, List<int> behindNPCs, List<int> behindProjectiles, List<int> overPlayers, List<int> overWiresUI)
@@ -416,5 +477,7 @@ namespace CalamityMod.Projectiles.Summon
         }
 
         #endregion
+
+        public override bool ShouldUpdatePosition() => false; // Disabled because we manually update the segment's position in the AI, so that the segments move based off the head's final position instead of before it had it's velocity applied.
     }
 }
