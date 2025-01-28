@@ -448,7 +448,7 @@ namespace CalamityMod.Projectiles.Summon
                 if (segments.ContainsKey(i))
                 {
                     SpriteEffects fx = Math.Abs(segments[i].rotation) > MathHelper.PiOver2 ? SpriteEffects.FlipHorizontally : SpriteEffects.None;
-                    if (i < segments.Count - 1)
+                    if (i < segments.Count)
                     {
                         Main.EntitySpriteDraw(texBody, segments[i].Center - Main.screenPosition, null, segments[i].GetAlpha(lightColor), segments[i].rotation + MathHelper.Pi / 2f, texBody.Size() / (2f), segments[i].scale, fx, 0);
                     }
