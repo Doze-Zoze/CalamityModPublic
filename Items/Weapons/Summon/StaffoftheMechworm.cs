@@ -1,4 +1,3 @@
-﻿using System.Linq;
 using CalamityMod.Projectiles.Summon;
 using CalamityMod.Rarities;
 using Microsoft.Xna.Framework;
@@ -31,96 +30,57 @@ namespace CalamityMod.Items.Weapons.Summon
             Item.DamageType = DamageClass.Summon;
         }
 
-        public override bool CanUseItem(Player player)
-        {
-            float neededSlots = 1;
-            float foundSlotsCount = 0;
-            foreach (Projectile p in Main.ActiveProjectiles)
-            {
-                if (p.minion && p.owner == player.whoAmI)
-                {
-                    foundSlotsCount += p.minionSlots;
-                    if (foundSlotsCount + neededSlots > player.maxMinions)
-                    {
-                        return false;
-                    }
-                }
-            }
-            return true;
-        }
-
-        public static void SummonBaseMechworm(IEntitySource source, int damage, int baseDamage, float knockback, Player owner, out int tailIndex)
-        {
-            tailIndex = -1;
-            if (Main.myPlayer != owner.whoAmI)
-                return;
-
-            int curr = Projectile.NewProjectile(source, Main.MouseWorld, Vector2.Zero, ModContent.ProjectileType<MechwormHead>(), damage, knockback, owner.whoAmI, 0f, 0f);
-            if (Main.projectile.IndexInRange(curr))
-                Main.projectile[curr].originalDamage = baseDamage;
-            curr = Projectile.NewProjectile(source, Main.MouseWorld, Vector2.Zero, ModContent.ProjectileType<MechwormBody>(), damage, knockback, owner.whoAmI, Main.projectile[curr].identity, 0f);
-            if (Main.projectile.IndexInRange(curr))
-                Main.projectile[curr].originalDamage = baseDamage;
-            int prev = curr;
-            curr = Projectile.NewProjectile(source, Main.MouseWorld, Vector2.Zero, ModContent.ProjectileType<MechwormBody>(), damage, knockback, owner.whoAmI, Main.projectile[curr].identity, 0f);
-            if (Main.projectile.IndexInRange(curr))
-                Main.projectile[curr].originalDamage = baseDamage;
-            Main.projectile[prev].localAI[1] = curr;
-            prev = curr;
-            curr = Projectile.NewProjectile(source, Main.MouseWorld, Vector2.Zero, ModContent.ProjectileType<MechwormTail>(), damage, knockback, owner.whoAmI, Main.projectile[curr].identity, 0f);
-            if (Main.projectile.IndexInRange(curr))
-                Main.projectile[curr].originalDamage = baseDamage;
-            Main.projectile[prev].localAI[1] = curr;
-
-            tailIndex = curr;
-        }
-
-        public static void AddSegmentToMechworm(IEntitySource source, int tailIndex, int damage, int baseDamage, float knockback, Player owner)
-        {
-            if (Main.myPlayer != owner.whoAmI)
-                return;
-
-            Vector2 spawnPosition = Main.projectile[tailIndex].Center;
-            Projectile tailAheadSegment = Main.projectile.Take(Main.maxProjectiles).FirstOrDefault(proj => MechwormBody.SameIdentity(proj, owner.whoAmI, (int)Main.projectile[tailIndex].ai[0]));
-            int body = Projectile.NewProjectile(source, spawnPosition, Vector2.Zero, ModContent.ProjectileType<MechwormBody>(), damage, knockback, owner.whoAmI, tailAheadSegment.identity, 0f);
-            int body2 = body;
-            body = Projectile.NewProjectile(source, spawnPosition, Vector2.Zero, ModContent.ProjectileType<MechwormBody>(), damage, knockback, owner.whoAmI, Main.projectile[body].identity, 0f);
-
-            var m = Main.projectileIdentity;
-            Main.projectile[tailIndex].ai[0] = Main.projectile[body].identity;
-            Main.projectile[tailIndex].netUpdate = true;
-            if (Main.projectile.IndexInRange(body))
-                Main.projectile[body].originalDamage = baseDamage;
-            if (Main.projectile.IndexInRange(body2))
-                Main.projectile[body2].originalDamage = baseDamage;
-        }
-
         public override bool Shoot(Player player, EntitySource_ItemUse_WithAmmo source, Vector2 position, Vector2 velocity, int type, int damage, float knockback)
         {
-            int head = -1;
-            int tail = -1;
-            foreach (Projectile p in Main.ActiveProjectiles)
+            bool Exists = false;
+            int tailID = 0;
+            //checks to see if a mechworm already exists owned by the same player
+            foreach (var projectile in Main.projectile)
             {
-                if (p.owner == Main.myPlayer)
+                if (projectile.type == type && projectile.owner == player.whoAmI && projectile.active)
                 {
-                    if (head == -1 && p.type == ModContent.ProjectileType<MechwormHead>())
-                    {
-                        head = p.whoAmI;
-                    }
-                    if (tail == -1 && p.type == ModContent.ProjectileType<MechwormTail>())
-                    {
-                        tail = p.whoAmI;
-                    }
-                    if (head != -1 && tail != -1)
-                    {
-                        break;
-                    }
+                    Exists = true;
+                }
+
+                if (projectile.type == ModContent.ProjectileType<MechwormTail>() && projectile.owner == player.whoAmI && projectile.active)
+                {
+                    tailID = projectile.whoAmI;
                 }
             }
-            if (head == -1 && tail == -1)
-                SummonBaseMechworm(source, damage, Item.damage, knockback, player, out _);
-            else if (head != -1 && tail != -1)
-                AddSegmentToMechworm(source, tail, damage, Item.damage, knockback, player);
+
+            //calculates avaliable minion slots
+            float foundSlotsCount = 0f;
+            foreach (var p in Main.projectile)
+            {
+                if (p.active && p.minion && p.owner == player.whoAmI)
+                {
+                    foundSlotsCount += p.minionSlots;
+                }
+            }
+            if (Exists) //If there is a mechworm, just add one segment
+            {
+                if (!(foundSlotsCount + 0.5f > (float)player.maxMinions)) // If there's at least half a slot, spawn a segment
+                {
+                    Projectile.NewProjectile(source, Main.projectile[tailID].Center, Vector2.Zero, ModContent.ProjectileType<MechwormBody>(), damage, knockback, player.whoAmI);
+                }
+            }
+            else //spawn a new mechworm
+            {
+                if (!(foundSlotsCount + 2f > (float)player.maxMinions)) // If there's at least 2 open slots, spawn the head, 2 segments, and the tail.
+                {
+                    Projectile.NewProjectile(source, Main.MouseWorld, player.DirectionTo(Main.MouseWorld) * 1000, ModContent.ProjectileType<MechwormHead>(), damage, knockback, player.whoAmI);
+                    Projectile.NewProjectile(source, Main.MouseWorld, Vector2.Zero, ModContent.ProjectileType<MechwormTail>(), damage, knockback, player.whoAmI);
+                    Projectile.NewProjectile(source, Main.MouseWorld, Vector2.Zero, ModContent.ProjectileType<MechwormBody>(), damage, knockback, player.whoAmI);
+                    Projectile.NewProjectile(source, Main.MouseWorld, Vector2.Zero, ModContent.ProjectileType<MechwormBody>(), damage, knockback, player.whoAmI);
+                    Projectile.NewProjectile(source, Main.MouseWorld, Vector2.Zero, ModContent.ProjectileType<MechwormTeleportRift>(), 0, 0f, player.whoAmI); //spawn a cute lil portal
+
+                } else if (!(foundSlotsCount + 1f > (float)player.maxMinions)) //If there's at least 1 open slot, spawn the head and tail
+                {
+                    Projectile.NewProjectile(source, Main.MouseWorld, player.DirectionTo(Main.MouseWorld) * 1000, ModContent.ProjectileType<MechwormHead>(), damage, knockback, player.whoAmI);
+                    Projectile.NewProjectile(source, Main.MouseWorld, Vector2.Zero, ModContent.ProjectileType<MechwormTail>(), damage, knockback, player.whoAmI);
+                    Projectile.NewProjectile(source, Main.MouseWorld, Vector2.Zero, ModContent.ProjectileType<MechwormTeleportRift>(), 0, 0f, player.whoAmI);
+                }
+            }
             return false;
         }
     }
