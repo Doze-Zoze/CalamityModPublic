@@ -525,6 +525,30 @@ namespace CalamityMod.Items
                 EditTooltipByNum(0, (line) => line.Text += "\nInflicts Whispering Death on hit");
             #endregion
 
+            // Whip summon tag is changed from additive to multiplicative
+            #region Whip Tooltips
+            if (item.type == ItemID.BlandWhip)
+                EditTooltipByNum(0, (line) => line.Text = "8% summon tag damage");
+
+            if (item.type == ItemID.ThornWhip)
+                EditTooltipByNum(0, (line) => line.Text = "4% summon tag damage");
+
+            if (item.type == ItemID.BoneWhip)
+                EditTooltipByNum(0, (line) => line.Text = "8% summon tag damage");
+
+            if (item.type == ItemID.CoolWhip)
+                EditTooltipByNum(0, (line) => line.Text = "8% summon tag damage");
+
+            if (item.type == ItemID.SwordWhip)
+                EditTooltipByNum(0, (line) => line.Text = "9% summon tag damage");
+
+            if (item.type == ItemID.MaceWhip)
+                EditTooltipByNum(0, (line) => line.Text = "11% summon tag damage");
+
+            if (item.type == ItemID.RainbowWhip)
+                EditTooltipByNum(0, (line) => line.Text = "12% summon tag damage");
+            #endregion
+
             // Light pets, accessories, and other items which boost the player's Abyss light stat
             #region Abyss Light Tooltips
 
