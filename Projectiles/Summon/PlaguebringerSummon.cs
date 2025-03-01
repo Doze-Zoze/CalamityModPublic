@@ -81,7 +81,7 @@ namespace CalamityMod.Projectiles.Summon
                         Projectile bee = Projectile.NewProjectileDirect(Projectile.GetSource_FromThis(), Projectile.Center, Main.rand.NextVector2Circular(0.25f, 0.25f), beeType, Owner.beeDamage(Projectile.damage), Owner.beeKB(0f), Projectile.owner);
                         bee.usesLocalNPCImmunity = true;
                         bee.localNPCHitCooldown = 10;
-                        bee.penetrate = 2;
+                        bee.penetrate = (beeType == ProjectileID.GiantBee ? 3 : 2);
                         bee.DamageType = DamageClass.Generic;
                     }
                 }
