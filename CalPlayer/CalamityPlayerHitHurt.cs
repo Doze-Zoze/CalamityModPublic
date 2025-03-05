@@ -837,7 +837,6 @@ namespace CalamityMod.CalPlayer
             if (theBee && theBeeCooldown <= 0 && lifeAndShieldCondition)
             {
                 contactDamageReduction += 0.5;
-                theBeeCooldown = 600;
             }
 
             // Apply Adrenaline DR if available
@@ -1077,7 +1076,6 @@ namespace CalamityMod.CalPlayer
             if (theBee && theBeeCooldown <= 0 && lifeAndShieldCondition)
             {
                 projectileDamageReduction += 0.5;
-                theBeeCooldown = 600;
             }
 
             // Apply Adrenaline DR if available
@@ -1174,6 +1172,13 @@ namespace CalamityMod.CalPlayer
             // As such, to avoid cooldowns proccing from dodge hits, do it here
             if (fleshTotem && !Player.HasCooldown(Cooldowns.FleshTotem.ID) && hurtInfo.Damage > 0)
                 Player.AddCooldown(Cooldowns.FleshTotem.ID, CalamityUtils.SecondsToFrames(20), true, "default");
+
+            // here for same reason as Flesh Totem
+            bool lifeAndShieldCondition = Player.statLife >= Player.statLifeMax2 && (!HasAnyEnergyShield || TotalEnergyShielding >= TotalMaxShieldDurability);
+            if (theBee && theBeeCooldown <= 0 && lifeAndShieldCondition)
+            {
+                theBeeCooldown = 600;
+            }
 
             if (NPC.AnyNPCs(ModContent.NPCType<THELORDE>()))
                 Player.AddBuff(ModContent.BuffType<NOU>(), 15, true);
@@ -1472,6 +1477,13 @@ namespace CalamityMod.CalPlayer
                     }
                 }
             }
+
+            // The Bee is here to prevent it's cooldown from activaing on a dodge
+            // this is because the run order is ModifyHit (Bee effect here) -> Hurt (where dodges happen) -> OnHit
+            bool lifeAndShieldCondition = Player.statLife >= Player.statLifeMax2 && (!HasAnyEnergyShield || TotalEnergyShielding >= TotalMaxShieldDurability);
+            if (theBee && theBeeCooldown <= 0 && lifeAndShieldCondition)
+                theBeeCooldown = 600;
+
             if (NPC.AnyNPCs(ModContent.NPCType<THELORDE>()))
             {
                 Player.AddBuff(ModContent.BuffType<NOU>(), 15, true);
